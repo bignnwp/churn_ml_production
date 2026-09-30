@@ -2,9 +2,17 @@
 
 Рефакторинг учебного ML-проекта по прогнозированию оттока клиентов банка.
 
+## Документация
+
+- [Model Card](docs/model_card.md) — назначение модели, данные, признаки, обучение, метрики, ограничения и рекомендации по эксплуатации.
+- [BPMN: жизненный цикл модели](docs/bpmn/README.md) — workflow от загрузки данных до согласования, внедрения, мониторинга и переобучения.
+- [BPMN-схема](docs/bpmn/model_lifecycle.png) — графическое представление процесса.
+- [Обзор документации](docs/README.md) — единая точка входа в документацию проекта.
+
+**Связь документов:** BPMN описывает процесс жизненного цикла, а Model Card — содержание и ограничения самой модели. Документы ссылаются друг на друга.
+
 ## Что изменено
 
-- notebook оставлен как исследовательский артефакт;
 - production-код вынесен в `src/churn_ml`;
 - зависимости описаны через Poetry;
 - форматирование и линтинг выполняет Ruff;
@@ -12,7 +20,9 @@
 - pre-commit запускает проверки автоматически перед commit;
 - обучение и оценка отделены от feature engineering;
 - конфигурация и random seed централизованы;
-- модель сохраняется через `joblib`.
+- модель сохраняется через `joblib`;
+- BPMN связывает подготовку данных, feature engineering, обучение, оценку, review, deployment, monitoring и цикл retraining;
+- документация Model Card и BPMN связана взаимными относительными ссылками.
 
 ## Важный момент про virtual environment
 
@@ -62,7 +72,7 @@ data/raw/train.csv
 
 Ожидается target `Exited`.
 
-Исходный notebook загружал датасет из GitHub. В production-версии источник данных не зашит в обучение: путь передаётся явно через CLI.
+В production-версии источник данных не зашит в обучение: путь передаётся явно через CLI.
 
 ## Обучение
 
@@ -72,6 +82,8 @@ poetry run python -m churn_ml.train \
     --model-out models/churn_random_forest.joblib
 ```
 
+Во время обучения выполняются загрузка и очистка данных, feature engineering, train/test split, подбор гиперпараметров Random Forest через `HalvingRandomSearchCV` и расчёт `recall`, `precision`, `f1`, `roc_auc` и `average_precision`.
+
 ## Структура
 
 ```text
@@ -79,8 +91,13 @@ poetry run python -m churn_ml.train \
 ├── data/
 │   ├── raw/
 │   └── processed/
+├── docs/
+│   ├── bpmn/
+│   │   ├── model_lifecycle.png
+│   │   └── README.md
+│   ├── model_card.md
+│   └── README.md
 ├── models/
-├── notebooks/
 ├── reports/
 ├── scripts/
 ├── src/
