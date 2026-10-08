@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_churn_retrain" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.31.0">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_Process" name="Retraining-цикл модели оттока (Churn RF)" processRef="Process_1" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_Notify" name="Уведомления">
+        <bpmn:flowNodeRef>Task_TelegramReject</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_TelegramResult</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Analyst" name="Аналитик">
+        <bpmn:flowNodeRef>Task_Validate</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_Approved</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_ML" name="ML Pipeline">
+        <bpmn:flowNodeRef>Task_LoadData</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Retrain</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_LogMetrics</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Compare</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_Better</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Deploy</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Keep</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Monitor" name="Мониторинг">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ResumeMonitor</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" name="Дрифт /&#10;расписание">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_LoadData" name="Загрузить&#10;данные">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Retrain" name="Обучить&#10;новую модель">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_LogMetrics" name="Записать&#10;метрики">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="Task_Validate" name="Валидация&#10;модели">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_Approved" name="Одобрена?">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:outgoing>Flow_Approve</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Reject</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_TelegramReject" name="Telegram:&#10;модель отклонена">
+      <bpmn:incoming>Flow_Reject</bpmn:incoming>
+      <bpmn:outgoing>Flow_RejectToMonitor</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Compare" name="Сравнить модели&#10;(аукцион AUC)">
+      <bpmn:incoming>Flow_Approve</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_Better" name="Новая лучше?">
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:outgoing>Flow_Deploy</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Keep</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Deploy" name="Деплой&#10;новой модели">
+      <bpmn:incoming>Flow_Deploy</bpmn:incoming>
+      <bpmn:outgoing>Flow_DeployToNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Keep" name="Оставить&#10;prod-модель">
+      <bpmn:incoming>Flow_Keep</bpmn:incoming>
+      <bpmn:outgoing>Flow_KeepToNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_TelegramResult" name="Telegram:&#10;результат цикла">
+      <bpmn:incoming>Flow_DeployToNotify</bpmn:incoming>
+      <bpmn:incoming>Flow_KeepToNotify</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToMonitor</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_ResumeMonitor" name="Вернуться&#10;к мониторингу">
+      <bpmn:incoming>Flow_ToMonitor</bpmn:incoming>
+      <bpmn:incoming>Flow_RejectToMonitor</bpmn:incoming>
+      <bpmn:outgoing>Flow_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_1" name="Конец">
+      <bpmn:incoming>Flow_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_LoadData" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_LoadData" targetRef="Task_Retrain" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_Retrain" targetRef="Task_LogMetrics" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_LogMetrics" targetRef="Task_Validate" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_Validate" targetRef="Gateway_Approved" />
+    <bpmn:sequenceFlow id="Flow_Approve" name="да" sourceRef="Gateway_Approved" targetRef="Task_Compare" />
+    <bpmn:sequenceFlow id="Flow_Reject" name="нет" sourceRef="Gateway_Approved" targetRef="Task_TelegramReject" />
+    <bpmn:sequenceFlow id="Flow_RejectToMonitor" sourceRef="Task_TelegramReject" targetRef="Task_ResumeMonitor" />
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_Compare" targetRef="Gateway_Better" />
+    <bpmn:sequenceFlow id="Flow_Deploy" name="да" sourceRef="Gateway_Better" targetRef="Task_Deploy" />
+    <bpmn:sequenceFlow id="Flow_Keep" name="нет" sourceRef="Gateway_Better" targetRef="Task_Keep" />
+    <bpmn:sequenceFlow id="Flow_DeployToNotify" sourceRef="Task_Deploy" targetRef="Task_TelegramResult" />
+    <bpmn:sequenceFlow id="Flow_KeepToNotify" sourceRef="Task_Keep" targetRef="Task_TelegramResult" />
+    <bpmn:sequenceFlow id="Flow_ToMonitor" sourceRef="Task_TelegramResult" targetRef="Task_ResumeMonitor" />
+    <bpmn:sequenceFlow id="Flow_End" sourceRef="Task_ResumeMonitor" targetRef="EndEvent_1" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Process_di" bpmnElement="Participant_Process" isHorizontal="true">
+        <dc:Bounds x="150" y="40" width="1070" height="380" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Notify_di" bpmnElement="Lane_Notify" isHorizontal="true">
+        <dc:Bounds x="180" y="330" width="1040" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Analyst_di" bpmnElement="Lane_Analyst" isHorizontal="true">
+        <dc:Bounds x="180" y="240" width="1040" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_ML_di" bpmnElement="Lane_ML" isHorizontal="true">
+        <dc:Bounds x="180" y="110" width="1040" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Monitor_di" bpmnElement="Lane_Monitor" isHorizontal="true">
+        <dc:Bounds x="180" y="40" width="1040" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="212" y="57" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="200" y="93" width="60" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LoadData_di" bpmnElement="Task_LoadData">
+        <dc:Bounds x="280" y="135" width="90" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Retrain_di" bpmnElement="Task_Retrain">
+        <dc:Bounds x="390" y="135" width="90" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LogMetrics_di" bpmnElement="Task_LogMetrics">
+        <dc:Bounds x="500" y="135" width="90" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Validate_di" bpmnElement="Task_Validate">
+        <dc:Bounds x="500" y="255" width="90" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Approved_di" bpmnElement="Gateway_Approved" isMarkerVisible="true">
+        <dc:Bounds x="625" y="265" width="40" height="40" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="617" y="308" width="58" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_TelegramReject_di" bpmnElement="Task_TelegramReject">
+        <dc:Bounds x="590" y="345" width="110" height="55" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Compare_di" bpmnElement="Task_Compare">
+        <dc:Bounds x="690" y="135" width="100" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Better_di" bpmnElement="Gateway_Better" isMarkerVisible="true">
+        <dc:Bounds x="815" y="145" width="40" height="40" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="798" y="188" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Deploy_di" bpmnElement="Task_Deploy">
+        <dc:Bounds x="890" y="115" width="90" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Keep_di" bpmnElement="Task_Keep">
+        <dc:Bounds x="890" y="175" width="90" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_TelegramResult_di" bpmnElement="Task_TelegramResult">
+        <dc:Bounds x="770" y="345" width="110" height="55" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ResumeMonitor_di" bpmnElement="Task_ResumeMonitor">
+        <dc:Bounds x="1035" y="50" width="90" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1162" y="57" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1165" y="93" width="32" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="230" y="93" />
+        <di:waypoint x="230" y="165" />
+        <di:waypoint x="280" y="165" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="370" y="165" />
+        <di:waypoint x="390" y="165" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="480" y="165" />
+        <di:waypoint x="500" y="165" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="545" y="195" />
+        <di:waypoint x="545" y="255" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="590" y="285" />
+        <di:waypoint x="625" y="285" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Approve_di" bpmnElement="Flow_Approve">
+        <di:waypoint x="645" y="265" />
+        <di:waypoint x="645" y="165" />
+        <di:waypoint x="690" y="165" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="651" y="210" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Reject_di" bpmnElement="Flow_Reject">
+        <di:waypoint x="645" y="305" />
+        <di:waypoint x="645" y="345" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="652" y="318" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <di:waypoint x="790" y="165" />
+        <di:waypoint x="815" y="165" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Deploy_di" bpmnElement="Flow_Deploy">
+        <di:waypoint x="855" y="165" />
+        <di:waypoint x="870" y="165" />
+        <di:waypoint x="870" y="140" />
+        <di:waypoint x="890" y="140" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="873" y="120" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Keep_di" bpmnElement="Flow_Keep">
+        <di:waypoint x="855" y="165" />
+        <di:waypoint x="870" y="165" />
+        <di:waypoint x="870" y="200" />
+        <di:waypoint x="890" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="874" y="210" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_DeployToNotify_di" bpmnElement="Flow_DeployToNotify">
+        <di:waypoint x="980" y="140" />
+        <di:waypoint x="1000" y="140" />
+        <di:waypoint x="1000" y="372" />
+        <di:waypoint x="880" y="372" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_KeepToNotify_di" bpmnElement="Flow_KeepToNotify">
+        <di:waypoint x="980" y="200" />
+        <di:waypoint x="1000" y="200" />
+        <di:waypoint x="1000" y="372" />
+        <di:waypoint x="880" y="372" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToMonitor_di" bpmnElement="Flow_ToMonitor">
+        <di:waypoint x="880" y="372" />
+        <di:waypoint x="1080" y="372" />
+        <di:waypoint x="1080" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RejectToMonitor_di" bpmnElement="Flow_RejectToMonitor">
+        <di:waypoint x="645" y="400" />
+        <di:waypoint x="645" y="410" />
+        <di:waypoint x="1080" y="410" />
+        <di:waypoint x="1080" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_End_di" bpmnElement="Flow_End">
+        <di:waypoint x="1125" y="75" />
+        <di:waypoint x="1162" y="75" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
