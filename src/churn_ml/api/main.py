@@ -19,6 +19,7 @@ model = None
 
 class PredictRequest(BaseModel):
     """Исходные признаки клиента (до feature engineering)."""
+
     Age: float
     NumOfProducts: int
     Balance: float
@@ -62,12 +63,6 @@ def predict(request: PredictRequest) -> PredictResponse:
         proba = model.predict_proba(data)[0][1]
         pred = int(proba >= 0.5)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при предсказании: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Ошибка при предсказании: {str(e)}") from e
 
-    return PredictResponse(
-        prediction=pred,
-        probability=round(float(proba), 4)
-    )
+    return PredictResponse(prediction=pred, probability=round(float(proba), 4))
