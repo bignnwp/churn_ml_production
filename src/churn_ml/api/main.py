@@ -62,7 +62,10 @@ def predict(request: PredictRequest) -> PredictResponse:
         proba = model.predict_proba(data)[0][1]
         pred = int(proba >= 0.5)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при предсказании: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при предсказании: {str(e)}"
+        ) from e
 
     return PredictResponse(
         prediction=pred,
