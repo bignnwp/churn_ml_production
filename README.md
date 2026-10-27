@@ -1,6 +1,18 @@
 # Churn ML Production
 
-Рефакторинг учебного ML-проекта по прогнозированию оттока клиентов банка.
+Рефакторинг учебного ML-проекта по прогнозированию оттока клиентов банка в production-oriented вид.
+
+Проект включает полный цикл: обработка данных, feature engineering, обучение модели, inference API, контейнеризация, CI/CD и Kubernetes-манифесты.
+
+## Возможности
+
+- Модульный пайплайн обучения (`src/churn_ml`)
+- FastAPI inference-сервис (`/predict`, `/health`)
+- Docker + docker-compose
+- GitHub Actions CI (lint, type-check, tests, сборка образа)
+- Kubernetes-манифесты (Deployment + Service)
+- Model Card + BPMN-диаграммы жизненного цикла модели
+- Poetry, Ruff, mypy, pre-commit, pytest
 
 ## Документация
 
@@ -11,7 +23,7 @@
 
 **Связь документов:** BPMN описывает процесс жизненного цикла, а Model Card — содержание и ограничения самой модели. Документы ссылаются друг на друга.
 
-## Что изменено
+## Что изменено по сравнению с учебным проектом
 
 - production-код вынесен в `src/churn_ml`;
 - зависимости описаны через Poetry;
@@ -21,33 +33,85 @@
 - обучение и оценка отделены от feature engineering;
 - конфигурация и random seed централизованы;
 - модель сохраняется через `joblib`;
+- добавлен FastAPI-сервис для инференса;
+- добавлены Dockerfile и docker-compose;
+- настроен CI/CD на GitHub Actions;
+- добавлены базовые Kubernetes-манифесты;
 - BPMN связывает подготовку данных, feature engineering, обучение, оценку, review, deployment, monitoring и цикл retraining;
 - документация Model Card и BPMN связана взаимными относительными ссылками.
 
-## Важный момент про virtual environment
+## Quick Start
 
-Само виртуальное окружение **не добавляется в Git**. В репозитории фиксируется способ его воспроизведения:
-
-- `pyproject.toml` — зависимости и их ограничения;
-- `poetry.lock` — точные версии после `poetry lock`;
-- `.gitignore` — исключает `.venv/`.
-
-После клонирования репозитория окружение создаётся заново командой:
+### 1. Локально (без Docker)
 
 ```bash
+# Установка зависимостей
 poetry install
+
+# Обучение модели
+poetry run python -m churn_ml.train \
+    --data data/raw/train.csv \
+    --model-out models/churn_random_forest.joblib
+
+# Запуск API
+poetry run uvicorn churn_ml.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Это production-подход: бинарные файлы виртуального окружения не являются частью исходного кода.
+Документация API: http://localhost:8000/docs
 
-## Установка
+### 2. Docker Compose (рекомендуется)
+
+```bash
+docker compose up --build
+```
+
+API будет доступен по адресу: http://localhost:8000/docs
+
+### 3. Kubernetes (minikube / kind / k3d)
+
+```bash
+# Сборка образа
+docker build -t churn-ml-api:latest .
+
+# Деплой
+kubectl apply -f k8s/
+
+# Проброс порта
+kubectl port-forward svc/churn-ml-api 8000:80
+```
+
+## API
+
+| Метод | Эндпоинт   | Описание                              |
+|-------|------------|---------------------------------------|
+| GET   | `/health`  | Проверка работоспособности            |
+| POST  | `/predict` | Получение прогноза оттока и вероятности |
+| GET   | `/docs`    | Swagger UI                            |
+
+### Пример запроса
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Age": 42,
+    "NumOfProducts": 1,
+    "Balance": 85000.0,
+    "EstimatedSalary": 100000.0,
+    "IsActiveMember": 1,
+    "Geography": "France",
+    "Gender": "Female"
+  }'
+```
+
+## Установка и проверка качества кода
 
 ```bash
 poetry install
 poetry run pre-commit install
 ```
 
-Проверка:
+Проверки:
 
 ```bash
 poetry run ruff check .
@@ -82,34 +146,61 @@ poetry run python -m churn_ml.train \
     --model-out models/churn_random_forest.joblib
 ```
 
-Во время обучения выполняются загрузка и очистка данных, feature engineering, train/test split, подбор гиперпараметров Random Forest через `HalvingRandomSearchCV` и расчёт `recall`, `precision`, `f1`, `roc_auc` и `average_precision`.
+Во время обучения выполняются:
+- загрузка и очистка данных;
+- feature engineering;
+- train/test split;
+- подбор гиперпараметров Random Forest через `HalvingRandomSearchCV`;
+- расчёт метрик (`recall`, `precision`, `f1`, `roc_auc`, `average_precision`);
+- сохранение модели через `joblib`.
 
-## Структура
+## Важный момент про virtual environment
+
+Само виртуальное окружение **не добавляется в Git**. В репозитории фиксируется способ его воспроизведения:
+
+- `pyproject.toml` — зависимости и их ограничения;
+- `poetry.lock` — точные версии после `poetry lock`;
+- `.gitignore` — исключает `.venv/`.
+
+После клонирования репозитория окружение создаётся заново командой:
+
+```bash
+poetry install
+```
+
+Это production-подход: бинарные файлы виртуального окружения не являются частью исходного кода.
+
+## Структура проекта
 
 ```text
 .
+├── src/churn_ml/
+│   ├── api/                 # FastAPI inference service
+│   ├── config.py
+│   ├── data.py
+│   ├── features.py
+│   ├── modeling.py
+│   └── train.py
+├── k8s/                     # Kubernetes manifests
+├── models/                  # Trained model artifacts
 ├── data/
 │   ├── raw/
 │   └── processed/
-├── docs/
-│   ├── bpmn/
-│   │   ├── model_lifecycle.png
-│   │   └── README.md
-│   ├── model_card.md
-│   └── README.md
-├── models/
-├── reports/
-├── scripts/
-├── src/
-│   └── churn_ml/
-│       ├── config.py
-│       ├── data.py
-│       ├── features.py
-│       ├── modeling.py
-│       └── train.py
+├── docs/                    # Model Card + BPMN
 ├── tests/
-├── .gitignore
-├── .pre-commit-config.yaml
+├── Dockerfile
+├── docker-compose.yml
 ├── pyproject.toml
+├── .github/workflows/ci.yml
 └── README.md
 ```
+
+## Tech Stack
+
+- **ML**: scikit-learn, imbalanced-learn, pandas, numpy
+- **API**: FastAPI, Uvicorn, Pydantic
+- **Packaging**: Poetry
+- **Quality**: Ruff, mypy, pytest, pre-commit
+- **Containers**: Docker, docker-compose
+- **Orchestration**: Kubernetes
+- **CI/CD**: GitHub Actions
