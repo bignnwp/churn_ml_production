@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
-
-if TYPE_CHECKING:
-    from prometheus_client import Counter, Gauge
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+
+if TYPE_CHECKING:
+    from prometheus_client import Counter, Gauge
 
 # ---------------------------------------------------------------------------
 # Симуляция дрифта
@@ -41,10 +42,9 @@ def simulate_drift(
     rng = np.random.default_rng(random_state)
     out = df.copy()
 
-    if "Age" in out.columns:
-        out["Age"] = out["Age"] + age_shift
-    elif "age" in out.columns:
-        out["age"] = out["age"] + age_shift
+    for age_column in ("age", "Age"):
+        if age_column in out.columns:
+            out[age_column] = out[age_column] + age_shift
 
     if target_col and target_col in out.columns and target_flip_rate > 0:
         n = len(out)
@@ -69,11 +69,12 @@ def demographic_parity_difference(
 ) -> DemographicParityReport:
     """Разница доли положительных предсказаний между группами (Demographic Parity).
 
-    DI (Disparate Impact) = P(Ŷ=1 | unprivileged) / P(Ŷ=1 | privileged).
-    DPD = P(Ŷ=1 | privileged) - P(Ŷ=1 | unprivileged).
+    При заданном privileged_value DI = rate(unprivileged) / rate(privileged).
+    Без baseline используется симметричное отношение min(rate) / max(rate).
+    DPD без baseline — размах положительных prediction rates между группами.
     """
-    sensitive = pd.Series(sensitive).astype(str)
-    y_pred = pd.Series(y_pred).astype(int)
+    sensitive = pd.Series(sensitive).reset_index(drop=True).astype(str)
+    y_pred = pd.Series(y_pred).reset_index(drop=True).astype(int)
 
     groups = sensitive.unique()
     rates: dict[str, float] = {}
@@ -108,9 +109,9 @@ def equalized_odds_difference(
     sensitive: pd.Series | np.ndarray,
 ) -> dict[str, Any]:
     """Разница TPR и FPR между группами (упрощённый Equalized Odds)."""
-    sensitive = pd.Series(sensitive).astype(str)
-    y_true = pd.Series(y_true).astype(int)
-    y_pred = pd.Series(y_pred).astype(int)
+    sensitive = pd.Series(sensitive).reset_index(drop=True).astype(str)
+    y_true = pd.Series(y_true).reset_index(drop=True).astype(int)
+    y_pred = pd.Series(y_pred).reset_index(drop=True).astype(int)
 
     result = {}
     for g in sensitive.unique():
@@ -180,48 +181,150 @@ def build_evidently_drift_report(
     column_mapping: dict[str, Any] | None = None,
     output_html: str | Path | None = None,
 ) -> Any:
-    """Строит отчёт Data Drift через Evidently и опционально сохраняет HTML."""
+    """Строит Evidently Data Drift report и сохраняет HTML-отчёт.
+
+    Совместимо с API Evidently 0.7.x (Snapshot возвращается из ``Report.run``).
+    """
     try:
         from evidently import Report
-        from evidently.metric_preset import DataDriftPreset
+        from evidently.presets import DataDriftPreset
     except ImportError as exc:
-        raise ImportError(
-            "Установите evidently: poetry add evidently  или  pip install evidently"
-        ) from exc
+        raise ImportError("Установите зависимости проекта: poetry install") from exc
 
     report = Report(metrics=[DataDriftPreset()])
-    report.run(reference_data=reference, current_data=current, column_mapping=column_mapping)
+    run_kwargs: dict[str, Any] = {
+        "current_data": current,
+        "reference_data": reference,
+    }
+    if column_mapping is not None:
+        run_kwargs["column_mapping"] = column_mapping
+
+    try:
+        snapshot = report.run(**run_kwargs)
+    except TypeError:
+        # Evidently 0.7 removed/changed some legacy run arguments.
+        run_kwargs.pop("column_mapping", None)
+        snapshot = report.run(**run_kwargs)
 
     if output_html is not None:
         path = Path(output_html)
         path.parent.mkdir(parents=True, exist_ok=True)
-        report.save_html(str(path))
+        snapshot.save_html(str(path))
 
-    return report
+    return snapshot
+
+
+def _snapshot_to_dict(snapshot: Any) -> dict[str, Any]:
+    """Преобразует Evidently Snapshot или обычный mapping в dict."""
+    if isinstance(snapshot, dict):
+        return snapshot
+
+    for method_name in ("dict", "as_dict"):
+        method = getattr(snapshot, method_name, None)
+        if callable(method):
+            try:
+                payload = method()
+            except Exception:
+                continue
+            if isinstance(payload, dict):
+                return payload
+
+    json_method = getattr(snapshot, "json", None)
+    if callable(json_method):
+        import json
+
+        with suppress(TypeError, ValueError):
+            payload = json.loads(json_method())
+            if isinstance(payload, dict):
+                return payload
+
+    return {}
 
 
 def extract_drift_summary(report: Any) -> dict[str, Any]:
-    """Извлекает краткую сводку дрифта из объекта Evidently Report."""
-    try:
-        as_dict = report.as_dict()
-    except Exception:
+    """Извлекает сводку из Evidently Snapshot разных поддерживаемых версий."""
+    payload = _snapshot_to_dict(report)
+    if not payload:
         return {"error": "Не удалось сериализовать отчёт Evidently"}
 
     summary: dict[str, Any] = {"metrics": []}
-    for metric in as_dict.get("metrics", []):
-        result = metric.get("result", {})
-        if "dataset_drift" in result or "number_of_drifted_columns" in result:
-            summary["dataset_drift"] = result.get("dataset_drift")
-            summary["share_of_drifted_columns"] = result.get("share_of_drifted_columns")
-            summary["number_of_drifted_columns"] = result.get("number_of_drifted_columns")
-            summary["number_of_columns"] = result.get("number_of_columns")
-        summary["metrics"].append(
-            {
-                "metric": metric.get("metric"),
-                "keys": list(result.keys())[:12],
-            }
-        )
+    drifted_columns: list[str] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            if "dataset_drift" in value:
+                summary["dataset_drift"] = value["dataset_drift"]
+            if "share_of_drifted_columns" in value:
+                summary["share_of_drifted_columns"] = value["share_of_drifted_columns"]
+            if "number_of_drifted_columns" in value:
+                summary["number_of_drifted_columns"] = value["number_of_drifted_columns"]
+            if "number_of_columns" in value:
+                summary["number_of_columns"] = value["number_of_columns"]
+
+            drift_flag = value.get("drift_detected")
+            column_name = value.get("column_name") or value.get("column")
+            if drift_flag is True and column_name is not None:
+                drifted_columns.append(str(column_name))
+
+            for nested in value.values():
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    visit(payload)
+    summary["metrics"] = payload.get("metrics", [])
+    metrics = payload.get("metrics", [])
+    if isinstance(metrics, list):
+        for metric in metrics:
+            if not isinstance(metric, dict):
+                continue
+            metric_id = str(metric.get("metric_id") or metric.get("metric") or "")
+            result = metric.get("result", {})
+            if "DriftedColumnsCount" in metric_id and isinstance(result, dict):
+                summary.setdefault("number_of_drifted_columns", result.get("count"))
+                summary.setdefault("share_of_drifted_columns", result.get("share"))
+                summary.setdefault("number_of_columns", result.get("total"))
+
+    if drifted_columns:
+        summary["drifted_columns"] = sorted(set(drifted_columns))
+
+    count = summary.get("number_of_drifted_columns")
+    total = summary.get("number_of_columns")
+    share = summary.get("share_of_drifted_columns")
+    if share is None and count is not None and total:
+        share = float(count) / float(total)
+        summary["share_of_drifted_columns"] = share
+    if share is None and drifted_columns:
+        total_columns = summary.get("number_of_columns")
+        if total_columns:
+            share = len(set(drifted_columns)) / float(total_columns)
+            summary["share_of_drifted_columns"] = share
+    if "dataset_drift" not in summary:
+        summary["dataset_drift"] = bool(share is not None and float(share) >= 0.5)
+
     return summary
+
+
+def compute_label_distribution_shift(
+    reference: pd.DataFrame,
+    current: pd.DataFrame,
+    target_col: str,
+    positive_label: Any = 1,
+) -> dict[str, float]:
+    """Сравнивает долю положительного класса в reference и current выборках."""
+    if target_col not in reference.columns or target_col not in current.columns:
+        raise ValueError(f"Целевая колонка {target_col!r} отсутствует в одной из выборок")
+    if reference.empty or current.empty:
+        raise ValueError("Для расчёта label shift обе выборки должны быть непустыми")
+
+    reference_rate = float((reference[target_col] == positive_label).mean())
+    current_rate = float((current[target_col] == positive_label).mean())
+    return {
+        "reference_positive_rate": reference_rate,
+        "current_positive_rate": current_rate,
+        "positive_rate_delta": current_rate - reference_rate,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +340,8 @@ ROC_AUC_GAUGE: Gauge | None
 DRIFT_SHARE_GAUGE: Gauge | None
 DRIFT_ALERTS: Counter | None
 FAIRNESS_DI_GAUGE: Gauge | None
+LABEL_POSITIVE_RATE_GAUGE: Gauge | None
+LABEL_SHIFT_DELTA_GAUGE: Gauge | None
 
 try:
     from prometheus_client import Counter, Gauge, start_http_server
@@ -254,6 +359,14 @@ try:
         "model_fairness_di",
         "Disparate Impact ratio (fairness)",
     )
+    LABEL_POSITIVE_RATE_GAUGE = Gauge(
+        "model_label_positive_rate",
+        "Current positive-class share in the monitored data",
+    )
+    LABEL_SHIFT_DELTA_GAUGE = Gauge(
+        "model_label_positive_rate_delta",
+        "Current minus reference positive-class share",
+    )
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     F1_SCORE_GAUGE = None
@@ -263,6 +376,8 @@ except ImportError:
     DRIFT_SHARE_GAUGE = None
     DRIFT_ALERTS = None
     FAIRNESS_DI_GAUGE = None
+    LABEL_POSITIVE_RATE_GAUGE = None
+    LABEL_SHIFT_DELTA_GAUGE = None
 
 
 def push_quality_metrics(metrics: dict[str, float]) -> None:
@@ -308,3 +423,14 @@ def start_metrics_server(port: int = 8001) -> None:
     if not _PROMETHEUS_AVAILABLE:
         raise ImportError("prometheus_client не установлен")
     start_http_server(port)
+
+
+def push_label_distribution_metrics(positive_rate: float, delta: float) -> None:
+    """Экспортирует текущую долю положительного класса и её сдвиг."""
+    if not _PROMETHEUS_AVAILABLE:
+        return
+
+    assert LABEL_POSITIVE_RATE_GAUGE is not None
+    assert LABEL_SHIFT_DELTA_GAUGE is not None
+    LABEL_POSITIVE_RATE_GAUGE.set(positive_rate)
+    LABEL_SHIFT_DELTA_GAUGE.set(delta)

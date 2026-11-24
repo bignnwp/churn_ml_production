@@ -19,11 +19,14 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY monitoring/ ./monitoring/
 COPY models/ ./models/
+RUN mkdir -p /app/data/raw /app/reports/practical_assignment
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 CMD ["uvicorn", "churn_ml.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

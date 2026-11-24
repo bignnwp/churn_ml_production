@@ -1,32 +1,66 @@
-# Пример правил алертинга для ML-мониторинга
-# Подключается к Prometheus как rule_files.
+# Prometheus alerting rules for the ML API and the practical monitoring exporter.
+# Loaded by monitoring/prometheus.yml. Alerts are visible at http://localhost:9090/alerts.
 
 groups:
-  - name: ml_monitoring
+  - name: ml_model_quality
+    interval: 15s
     rules:
-      - alert: HighDataDrift
-        expr: model_drift_share > 0.25
+      - alert: LowModelF1
+        expr: model_f1_score < 0.50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model F1 score is below the configured threshold"
+          description: "Current F1={{ $value }}; expected F1 >= 0.50. Check the model and recent labeled data."
+
+      - alert: ModelF1MetricMissing
+        expr: absent(model_f1_score)
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High data drift detected"
-          description: "Share of drifted features is {{ $value }} (threshold 0.25)."
+          summary: "Model F1 metric is missing"
+          description: "The practical-assignment exporter is not exposing model_f1_score."
 
-      - alert: LowF1Score
-        expr: model_f1_score < 0.5
-        for: 10m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Model F1 below threshold"
-          description: "Current F1={{ $value }}."
-
-      - alert: FairnessDIOutOfRange
-        expr: model_fairness_di < 0.8 or model_fairness_di > 1.25
-        for: 15m
+  - name: ml_data_drift
+    interval: 15s
+    rules:
+      - alert: HighDataDrift
+        expr: model_drift_share > 0.25
+        for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "Disparate Impact outside common band"
-          description: "DI={{ $value }}. Проверьте правовой базис анализа (152-ФЗ)."
+          summary: "High data drift detected"
+          description: "Share of drifted columns is {{ $value }} (threshold 0.25). Review the Evidently report."
+
+      - alert: TargetDistributionShift
+        expr: abs(model_label_positive_rate_delta) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Target positive-class share changed"
+          description: "Current minus reference positive-class share is {{ $value }}."
+
+      - alert: MonitoringExporterDown
+        expr: up{job="ml-monitoring-assignment"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ML monitoring exporter is unreachable"
+          description: "Prometheus cannot scrape ml-monitoring:8001/metrics."
+
+  - name: ml_fairness
+    interval: 15s
+    rules:
+      - alert: LowFairnessDisparateImpact
+        expr: model_fairness_di < 0.80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disparate Impact ratio is below the review threshold"
+          description: "DI={{ $value }}. Investigate group-level outcomes; this ratio is a screening signal, not a legal conclusion."

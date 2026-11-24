@@ -205,49 +205,81 @@ poetry install
 - **Orchestration**: Kubernetes
 - **CI/CD**: GitHub Actions
 
-## Практическое задание: система мониторинга
+## Практическое задание: система мониторинга ML-модели
 
-Реализован полный контур по заданию вебинара «Мониторинг моделей машинного обучения»:
+Реализован воспроизводимый учебный сценарий по всем шести пунктам задания:
 
 | Шаг | Действие | Реализация |
 |-----|----------|------------|
-| 01 | Датасет | OpenML `credit-g` |
-| 02 | Обучение | CatBoost (если установлен) или RandomForest |
-| 03 | Симуляция дрифта | Age +5 лет, flip 15% меток |
-| 04 | Дрифт | Evidently DataDrift → HTML-отчёт |
-| 05 | Fairness | Demographic Parity + Equalized Odds по `sex` |
-| 06 | Prometheus | F1, drift share, DI + пример alerting rules |
+| 01 | Датасет | OpenML `credit-g` (German Credit), локальный CSV-кэш после первого запуска |
+| 02 | Обучение | CatBoost при установке extra `catboost`, иначе RandomForest + sklearn Pipeline |
+| 03 | Симуляция дрейфа | `age` +5 лет и инверсия 15% бинарных меток для изменения доли целевого класса |
+| 04 | Evidently | `DataDriftPreset` по признакам и целевой переменной; HTML и JSON отчёты |
+| 05 | Fairness | Demographic Parity, Disparate Impact и Equalized Odds по производному признаку `sex` |
+| 06 | Prometheus | F1, precision, recall, ROC-AUC, drift share, label shift и fairness DI; alerting rules |
 
-### Запуск
+Для `credit-g` отдельного поля `sex` нет: учебная группа выводится из `personal_status`
+(A91/A93/A94 → male; A92/A95 → female). Эти чувствительные поля исключены из признаков
+модели и используются только для диагностического fairness-анализа. В отчёте Disparate Impact
+представлен как отношение меньшей групповой доли положительных предсказаний к большей; это
+симметричный скрининговый показатель, а не юридическая оценка дискриминации.
 
-```bash
-# Зависимости мониторинга
-poetry install --extras monitoring
-# Опционально CatBoost
-poetry install --extras all
+### Локальный запуск сценария
 
-# Выполнить все 6 шагов
+```powershell
+poetry install
 poetry run python scripts/practical_assignment.py --metrics-port 8001 --hold-seconds 60
 ```
 
-Отчёты появятся в `reports/practical_assignment/`:
-- `evidently_data_drift.html` — отчёт дрифта
-- `fairness_report.json` — fairness по sex
-- `assignment_summary.json` — сводка
+При первом запуске требуется доступ к OpenML. Датасет сохраняется в `data/raw/credit_g_openml.csv` и используется из кэша при следующих запусках.
 
-Метрики Prometheus: http://127.0.0.1:8001/metrics
+Артефакты формируются в `reports/practical_assignment/`:
+- `evidently_data_drift.html` — визуальный Evidently-отчёт;
+- `evidently_data_drift.json` — извлечённая сводка дрейфа и сдвига целевой доли;
+- `fairness_report.json` — fairness по `sex`;
+- `assignment_summary.json` — единая сводка эксперимента.
 
-Пример правил алертов: [`monitoring/prometheus_rules.yml`](monitoring/prometheus_rules.yml)
+В отдельном терминале можно проверить exporter:
 
-### Модуль мониторинга
+```powershell
+(Invoke-WebRequest http://localhost:8001/metrics).Content
+```
 
-`src/churn_ml/monitoring.py`:
-- `simulate_drift` — covariate + label shift
-- `build_evidently_drift_report` / `extract_drift_summary`
-- `compute_fairness_report` (DP, DI, Equalized Odds)
-- `push_quality_metrics` / `push_drift_metric` / `push_fairness_di`
-- `start_metrics_server`
+### Полный контур Prometheus через Docker Compose
 
-API также отдаёт `/metrics` (prometheus_client) и счётчики запросов `/predict`.
+Для длительной работы exporter и сбора метрик Prometheus используй профиль `monitoring`:
 
-> **Правовая оговорка:** анализ fairness по полу — учебный. В бою требуется законное основание обработки признака (152-ФЗ) и оценка воздействия (ГОСТ Р 72514-2026).
+```powershell
+docker compose --profile monitoring up --build -d
+```
+
+Команда запускает:
+- `churn-ml-api` — FastAPI-сервис на `http://localhost:8000`;
+- `ml-monitoring` — обучение, drift/fairness-анализ и exporter на `http://localhost:8001/metrics`;
+- `prometheus` — сбор метрик и вычисление alert rules на `http://localhost:9090`.
+
+После обучения метрики появляются в Prometheus. Состояния алертов доступны на `http://localhost:9090/alerts`. Конфигурация scrape jobs находится в `monitoring/prometheus.yml`, правила — в `monitoring/prometheus_rules.yml`.
+
+Остановить сервисы:
+
+```powershell
+docker compose --profile monitoring down
+```
+
+Сохранённые отчёты доступны локально в `reports/practical_assignment/`. Данные Prometheus сохраняются в Docker volume `prometheus-data`.
+
+### Метрики и правила
+
+В exporter публикуются Prometheus gauges:
+- `model_f1_score`, `model_precision`, `model_recall`, `model_roc_auc`;
+- `model_drift_share`;
+- `model_label_positive_rate` и `model_label_positive_rate_delta`;
+- `model_fairness_di`.
+
+Настроены алерты `LowModelF1`, `ModelF1MetricMissing`, `HighDataDrift`, `TargetDistributionShift`, `MonitoringExporterDown` и `FairnessDIOutOfRange`. Пороговые значения задаются в `monitoring/prometheus_rules.yml`; состояния видны в Prometheus UI (`/alerts`). Для отправки уведомлений во внешние каналы потребуется отдельно подключить Alertmanager и receiver.
+
+`model_f1_score` в практическом сценарии — F1 на отложенной размеченной выборке, вычисленный при запуске задания. Это не online F1 по живому трафику: для его обновления в production необходимо собирать фактические метки/исходы по предсказаниям и пересчитывать метрики по мере поступления ground truth. Сам API экспортирует HTTP-метрики запросов через `/metrics`.
+
+В Docker Compose каталог `./models` монтируется в контейнер API read-only. Модель должна быть доступна локально в `models/churn_random_forest.joblib`; если её нет, `/live` останется доступен, но `/ready` и `/predict` вернут ошибку о незагруженной модели.
+
+> **Ограничения интерпретации:** `sex` выводится из `personal_status` только для учебного эксперимента. Fairness-показатели являются диагностическими сигналами, а не доказательством дискриминации или юридическим заключением. Для реальных данных необходимы законное основание обработки, минимизация данных и отдельная оценка рисков.
