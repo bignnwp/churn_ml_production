@@ -1,6 +1,6 @@
 # Model_retrain_BPMN: процесс автоматического переобучения модели
 
-**Проект:** `churn_ml_production` — прогноз оттока клиентов банка (Random Forest, target `Exited`)  
+**Проект:** `churn_ml_production` — прогноз оттока клиентов банка (Random Forest, target `Exited`)
 **Связанные документы:** [Model Card](model_card.md) · [Model_BPMN](Model_BPMN.md) · [схема .bpmn](bpmn/churn_retraining_cycle.bpmn)
 
 Документ описывает процесс **от триггера переобучения до развёртывания новой версии** модели (или отказа от публикации).
@@ -106,8 +106,8 @@ flowchart TD
 |----------------|----------------------------|
 | Stratified train/test split. Pipeline: impute → scale / one-hot → RandomForest. Подбор гиперпараметров через `HalvingRandomSearchCV` (`scoring="recall"`). Расчёт метрик на test | Артефакт `model_v_new.joblib` + словарь метрик: recall, precision, f1, roc_auc, average_precision, best_params |
 
-Код: `src/churn_ml/train.py`, `modeling.py`.  
-Команда:  
+Код: `src/churn_ml/train.py`, `modeling.py`.
+Команда:
 `poetry run python -m churn_ml.train --data data/raw/train.csv --model-out models/churn_rf_vN.joblib`
 
 ---

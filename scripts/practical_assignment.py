@@ -24,7 +24,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
@@ -32,7 +31,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, RobustScaler
+from sklearn.preprocessing import OneHotEncoder, RobustScaler
 
 # Добавляем src в path
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,14 +75,19 @@ def step01_load_dataset() -> tuple[pd.DataFrame, str, str]:
     if sensitive_col in df.columns:
         # male: 'male single', 'male mar/wid', 'male div/sep'
         # female: 'female div/dep/mar'
-        df["sex"] = df[sensitive_col].astype(str).str.startswith("male").map(
-            {True: "male", False: "female"}
+        df["sex"] = (
+            df[sensitive_col]
+            .astype(str)
+            .str.startswith("male")
+            .map({True: "male", False: "female"})
         )
     else:
         df["sex"] = "unknown"
 
     print(f"  Строк: {len(df)}, столбцов: {df.shape[1]}")
-    print(f"  Целевая: {target_col} (1=bad), доля положительного класса: {df[target_col].mean():.3f}")
+    print(
+        f"  Целевая: {target_col} (1=bad), доля положительного класса: {df[target_col].mean():.3f}"
+    )
     print(f"  Признак sex: {df['sex'].value_counts().to_dict()}")
     print(f"  Age: min={df['age'].min()}, max={df['age'].max()}, mean={df['age'].mean():.1f}")
 
@@ -133,6 +137,7 @@ def step02_train_model(
             cat_features=cat_cols,
         )
         model.fit(X_train, y_train, eval_set=(X_test, y_test))
+
         # Оборачиваем в простой объект с predict/predict_proba
         class _CbWrapper:
             def __init__(self, m):
@@ -266,8 +271,10 @@ def step04_evidently_drift(
         summary = extract_drift_summary(report)
         print(f"  Отчёт сохранён: {html_path}")
         print(f"  Dataset drift: {summary.get('dataset_drift')}")
-        print(f"  Drifted columns: {summary.get('number_of_drifted_columns')} / "
-              f"{summary.get('number_of_columns')}")
+        print(
+            f"  Drifted columns: {summary.get('number_of_drifted_columns')} / "
+            f"{summary.get('number_of_columns')}"
+        )
         print(f"  Share drifted: {summary.get('share_of_drifted_columns')}")
         return summary
     except ImportError as e:
@@ -337,7 +344,9 @@ def step06_prometheus(
     except ImportError:
         print("  [WARN] prometheus_client не установлен. Установите: poetry add prometheus-client")
         print("  Метрики будут только выведены в консоль.")
-        print(f"  F1={metrics.get('f1')}, drift_share={drift_summary.get('share_of_drifted_columns')}")
+        print(
+            f"  F1={metrics.get('f1')}, drift_share={drift_summary.get('share_of_drifted_columns')}"
+        )
         return
     except OSError as e:
         print(f"  [WARN] Не удалось занять порт {port}: {e}")

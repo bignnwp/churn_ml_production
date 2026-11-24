@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from churn_ml.monitoring import (
     compute_fairness_report,
