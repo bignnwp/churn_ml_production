@@ -62,10 +62,28 @@ def load_model() -> None:
     print(f"Модель успешно загружена из {MODEL_PATH}")
 
 
+@app.get("/live")
+def liveness() -> dict[str, str]:
+    return {"status": "alive"}
+
+
+@app.get("/ready")
+def readiness() -> dict[str, str]:
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Модель не загружена",
+        )
+
+    return {
+        "status": "ready",
+        "model_loaded": "true",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    status = "ok" if model is not None else "degraded"
-    return {"status": status, "model_loaded": str(model is not None)}
+    return readiness()
 
 
 @app.get("/metrics")

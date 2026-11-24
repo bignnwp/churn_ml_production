@@ -56,13 +56,3 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          volumeMounts:
-            - name: model-volume
-              mountPath: /app/models
-              readOnly: true
-      volumes:
-        - name: model-volume
-          # Замените на PVC после размещения обученной модели:
-          # persistentVolumeClaim:
-          #   claimName: churn-model-pvc
-          emptyDir: {}
