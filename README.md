@@ -324,7 +324,7 @@ docker compose --profile monitoring down
 - `model_label_positive_rate` и `model_label_positive_rate_delta`;
 - `model_fairness_di`.
 
-Настроены алерты `LowModelF1`, `ModelF1MetricMissing`, `HighDataDrift`, `TargetDistributionShift`, `MonitoringExporterDown` и `FairnessDIOutOfRange`. Пороговые значения задаются в `monitoring/prometheus_rules.yml`; состояния видны в Prometheus UI (`/alerts`). Для отправки уведомлений во внешние каналы потребуется отдельно подключить Alertmanager и receiver.
+Настроены алерты `LowModelF1`, `ModelF1MetricMissing`, `HighDataDrift`, `TargetDistributionShift`, `MonitoringExporterDown` и `LowFairnessDisparateImpact`. Пороговые значения задаются в `monitoring/prometheus_rules.yml`; состояния видны в Prometheus UI (`/alerts`). Для отправки уведомлений во внешние каналы потребуется отдельно подключить Alertmanager и receiver.
 
 `model_f1_score` в практическом сценарии — F1 на отложенной размеченной выборке, вычисленный при запуске задания. Это не online F1 по живому трафику: для его обновления в production необходимо собирать фактические метки/исходы по предсказаниям и пересчитывать метрики по мере поступления ground truth. Сам API экспортирует HTTP-метрики запросов через `/metrics`.
 
