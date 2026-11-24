@@ -38,3 +38,12 @@ Thumbs.db
 
 # IDE
 .idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Testing and linting cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
