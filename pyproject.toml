@@ -27,8 +27,7 @@ catboost = {version = ">=1.2", optional = true}
 
 [tool.poetry.extras]
 catboost = ["catboost"]
-monitoring = ["evidently", "prometheus-client"]
-all = ["catboost", "evidently", "prometheus-client"]
+all = ["catboost"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
