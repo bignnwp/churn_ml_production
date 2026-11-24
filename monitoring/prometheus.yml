@@ -14,3 +14,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["ml-monitoring:8001"]
+
+  - job_name: churn-ml-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["churn-ml-api:8000"]
