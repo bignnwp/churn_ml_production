@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,12 @@ from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_sco
 # Симуляция дрифта
 # ---------------------------------------------------------------------------
 
+class DemographicParityReport(TypedDict):
+    """Результат расчёта Demographic Parity."""
+
+    rates: dict[str, float]
+    dpd: float
+    di: float
 
 def simulate_drift(
     df: pd.DataFrame,
@@ -55,7 +61,7 @@ def demographic_parity_difference(
     y_pred: pd.Series | np.ndarray,
     sensitive: pd.Series | np.ndarray,
     privileged_value: Any = None,
-) -> dict[str, float]:
+) -> DemographicParityReport:
     """Разница доли положительных предсказаний между группами (Demographic Parity).
 
     DI (Disparate Impact) = P(Ŷ=1 | unprivileged) / P(Ŷ=1 | privileged).
@@ -65,7 +71,7 @@ def demographic_parity_difference(
     y_pred = pd.Series(y_pred).astype(int)
 
     groups = sensitive.unique()
-    rates = {}
+    rates: dict[str, float] = {}
     for g in groups:
         mask = sensitive == g
         rates[g] = float(y_pred[mask].mean()) if mask.sum() > 0 else float("nan")
@@ -236,13 +242,13 @@ try:
     )
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
-    F1_SCORE_GAUGE = None  # type: ignore
-    PRECISION_GAUGE = None  # type: ignore
-    RECALL_GAUGE = None  # type: ignore
-    ROC_AUC_GAUGE = None  # type: ignore
-    DRIFT_SHARE_GAUGE = None  # type: ignore
-    DRIFT_ALERTS = None  # type: ignore
-    FAIRNESS_DI_GAUGE = None  # type: ignore
+    F1_SCORE_GAUGE = None
+    PRECISION_GAUGE = None
+    RECALL_GAUGE = None
+    ROC_AUC_GAUGE = None
+    DRIFT_SHARE_GAUGE = None
+    DRIFT_ALERTS = None
+    FAIRNESS_DI_GAUGE = None
 
 
 def push_quality_metrics(metrics: dict[str, float]) -> None:
