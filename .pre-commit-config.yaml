@@ -3,7 +3,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: '^(notebooks/|docs/bpmn/)'
       - id: end-of-file-fixer
+        exclude: '^(notebooks/|docs/bpmn/)'
       - id: check-yaml
       - id: check-toml
       - id: check-json
@@ -14,15 +16,20 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
+        exclude: '^(notebooks/)'
       - id: ruff-format
+        exclude: '^(notebooks/)'
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+    rev: v1.13.0
     hooks:
       - id: mypy
+        files: ^src/
+        language_version: python3.12
         additional_dependencies:
-          - pandas
-          - numpy
-          - scikit-learn
-          - scipy
-          - joblib
+          - pandas-stubs
+          - types-requests
+        args:
+          - --ignore-missing-imports
+          - --explicit-package-bases
+          - --python-version=3.12

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: churn-ml-api
+  labels:
+    app: churn-ml-api
+    component: inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: churn-ml-api
+  template:
+    metadata:
+      labels:
+        app: churn-ml-api
+        component: inference
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: churn-ml-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PYTHONPATH
+              value: "/app/src"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: model-volume
+              mountPath: /app/models
+              readOnly: true
+      volumes:
+        - name: model-volume
+          # Замените на PVC после размещения обученной модели:
+          # persistentVolumeClaim:
+          #   claimName: churn-model-pvc
+          emptyDir: {}
