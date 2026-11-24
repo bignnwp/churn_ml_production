@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+if TYPE_CHECKING:
+    from prometheus_client import Counter, Gauge
 
 import numpy as np
 import pandas as pd
@@ -226,6 +229,15 @@ def extract_drift_summary(report: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _PROMETHEUS_AVAILABLE = False
+
+F1_SCORE_GAUGE: Gauge | None
+PRECISION_GAUGE: Gauge | None
+RECALL_GAUGE: Gauge | None
+ROC_AUC_GAUGE: Gauge | None
+DRIFT_SHARE_GAUGE: Gauge | None
+DRIFT_ALERTS: Counter | None
+FAIRNESS_DI_GAUGE: Gauge | None
+
 try:
     from prometheus_client import Counter, Gauge, start_http_server
 
@@ -257,6 +269,10 @@ def push_quality_metrics(metrics: dict[str, float]) -> None:
     """Обновляет Prometheus Gauge-метрики качества."""
     if not _PROMETHEUS_AVAILABLE:
         return
+    assert F1_SCORE_GAUGE is not None
+    assert PRECISION_GAUGE is not None
+    assert RECALL_GAUGE is not None
+    assert ROC_AUC_GAUGE is not None
     if "f1" in metrics:
         F1_SCORE_GAUGE.set(metrics["f1"])
     if "precision" in metrics:
@@ -270,6 +286,9 @@ def push_quality_metrics(metrics: dict[str, float]) -> None:
 def push_drift_metric(share_of_drifted: float, alert: bool = False) -> None:
     if not _PROMETHEUS_AVAILABLE:
         return
+
+    assert DRIFT_SHARE_GAUGE is not None
+    assert DRIFT_ALERTS is not None
     DRIFT_SHARE_GAUGE.set(share_of_drifted)
     if alert:
         DRIFT_ALERTS.inc()
@@ -278,6 +297,8 @@ def push_drift_metric(share_of_drifted: float, alert: bool = False) -> None:
 def push_fairness_di(di: float) -> None:
     if not _PROMETHEUS_AVAILABLE:
         return
+
+    assert FAIRNESS_DI_GAUGE is not None
     if di == di:  # not NaN
         FAIRNESS_DI_GAUGE.set(di)
 
