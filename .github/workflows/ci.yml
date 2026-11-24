@@ -54,12 +54,15 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
             -v "$GITHUB_WORKSPACE/monitoring/prometheus_rules.yml:/etc/prometheus/rules/prometheus_rules.yml:ro" \
+            --entrypoint=/bin/promtool \
             prom/prometheus:v3.13.5 \
-            promtool check config /etc/prometheus/prometheus.yml
+            check config /etc/prometheus/prometheus.yml
+
           docker run --rm \
             -v "$GITHUB_WORKSPACE/monitoring/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro" \
+            --entrypoint=/bin/promtool \
             prom/prometheus:v3.13.5 \
-            promtool check rules /etc/prometheus/prometheus_rules.yml
+            check rules /etc/prometheus/prometheus_rules.yml
 
       - name: Build image
         run: docker build -t churn-ml-api:latest .
