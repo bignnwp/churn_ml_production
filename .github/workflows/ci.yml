@@ -81,12 +81,62 @@ jobs:
         run: |
           docker run -d --name churn-ml-api-smoke -p 8000:8000 churn-ml-api:latest
           trap 'docker rm -f churn-ml-api-smoke >/dev/null 2>&1 || true' EXIT
+
+          ready=0
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8000/live; then
-              curl --fail --silent http://127.0.0.1:8000/metrics >/dev/null
-              exit 0
+            if curl --fail --silent http://127.0.0.1:8000/ready >/dev/null; then
+              ready=1
+              break
             fi
             sleep 2
           done
-          docker logs churn-ml-api-smoke
-          exit 1
+
+          if [ "$ready" -ne 1 ]; then
+            echo "API did not become ready"
+            docker logs churn-ml-api-smoke
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:8000/live \
+            | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          assert data.get("status") == "alive", data
+          '
+
+          curl --fail --silent http://127.0.0.1:8000/ready \
+            | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          assert data.get("status") == "ready", data
+          assert data.get("model_loaded") == "true", data
+          '
+
+          prediction=$(curl --fail --silent --show-error \
+            -X POST http://127.0.0.1:8000/predict \
+            -H "Content-Type: application/json" \
+            --data-binary '{
+              "Age": 42.0,
+              "NumOfProducts": 2,
+              "Balance": 100000.0,
+              "EstimatedSalary": 100000.0,
+              "IsActiveMember": 1,
+              "Geography": "Germany",
+              "Gender": "Male"
+            }')
+
+          printf '%s' "$prediction" | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          assert type(data.get("prediction")) is int, data
+          assert data["prediction"] in (0, 1), data
+          probability = data.get("probability")
+          assert isinstance(probability, (int, float)), data
+          assert 0.0 <= probability <= 1.0, data
+          print("Prediction response:", data)
+          '
+
+          curl --fail --silent --show-error http://127.0.0.1:8000/metrics \
+            | grep -Eq '^churn_predict_total\{outcome="[01]"\} [1-9][0-9]*(\.[0-9]+)?$'
+
+          echo "API smoke test passed: liveness, readiness, inference and metrics"
