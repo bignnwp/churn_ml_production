@@ -13,12 +13,14 @@ from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_sco
 # Симуляция дрифта
 # ---------------------------------------------------------------------------
 
+
 class DemographicParityReport(TypedDict):
     """Результат расчёта Demographic Parity."""
 
     rates: dict[str, float]
     dpd: float
     di: float
+
 
 def simulate_drift(
     df: pd.DataFrame,
