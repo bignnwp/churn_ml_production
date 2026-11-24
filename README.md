@@ -239,6 +239,54 @@ poetry run python scripts/practical_assignment.py --metrics-port 8001 --hold-sec
 - `fairness_report.json` — fairness по `sex`;
 - `assignment_summary.json` — единая сводка эксперимента.
 
+### Полный интеграционный тест Docker Compose
+
+Поднимите API, monitoring exporter и Prometheus в одной Compose-сети:
+
+```powershell
+docker compose --profile monitoring up --build -d
+```
+
+Дождитесь, пока `ml-monitoring` завершит загрузку/обучение и станет healthy:
+
+```powershell
+docker compose ps
+```
+
+Затем выполните runtime smoke test (проверяет API readiness и prediction, метрики обоих exporters,
+все три Prometheus scrape targets, наличие alert rules и Evidently/fairness-артефактов):
+
+```powershell
+poetry run python scripts/integration_smoke_test.py
+```
+
+Сценарий ждёт сервисы до 10 минут. Успешный результат заканчивается строкой
+`INTEGRATION TEST: SUCCESS`. Он проверяет, что alert rules загружены; фактический статус
+`FIRING` зависит от значений метрик и длительности `for` в правилах.
+
+Детерминированная проверка перехода alert rules в `FIRING` запускается отдельно через `promtool`
+и автоматически выполняется в GitHub Actions:
+
+```powershell
+docker run --rm `
+  -v "${PWD}/monitoring:/etc/prometheus/rules:ro" `
+  --entrypoint=/bin/promtool `
+  prom/prometheus:v3.13.5 `
+  test rules /etc/prometheus/rules/prometheus_rule_tests.yml
+```
+
+Диагностика при сбое:
+
+```powershell
+docker compose logs --tail=200 churn-ml-api ml-monitoring prometheus
+```
+
+Остановить сервисы, сохранив данные Prometheus:
+
+```powershell
+docker compose --profile monitoring down
+```
+
 В отдельном терминале можно проверить exporter:
 
 ```powershell

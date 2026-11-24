@@ -413,6 +413,11 @@ def main() -> None:
         "dataset": "OpenML credit-g",
         "model": type(model).__name__,
         "quality_metrics": quality_metrics,
+        "drift_validation": {
+            "age_reference_mean": float(df["age"].mean()),
+            "age_current_mean": float(drifted_df["age"].mean()),
+            "age_mean_delta": float(drifted_df["age"].mean() - df["age"].mean()),
+        },
         "drift_summary": drift_summary,
         "fairness": fairness_report,
     }

@@ -57,12 +57,19 @@ jobs:
             --entrypoint=/bin/promtool \
             prom/prometheus:v3.13.5 \
             check config /etc/prometheus/prometheus.yml
-
           docker run --rm \
             -v "$GITHUB_WORKSPACE/monitoring/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro" \
             --entrypoint=/bin/promtool \
             prom/prometheus:v3.13.5 \
             check rules /etc/prometheus/prometheus_rules.yml
+
+      - name: Test Prometheus alert firing behavior
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/monitoring:/etc/prometheus/rules:ro" \
+            --entrypoint=/bin/promtool \
+            prom/prometheus:v3.13.5 \
+            test rules /etc/prometheus/rules/prometheus_rule_tests.yml
 
       - name: Build image
         run: docker build -t churn-ml-api:latest .
